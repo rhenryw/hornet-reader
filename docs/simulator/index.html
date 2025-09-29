@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>WaspLine Reader Simulator</title>
+	<style>
+		:root {
+			color-scheme: light dark;
+			font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+			background: Canvas;
+			color: CanvasText;
+		}
+
+		body {
+			margin: 0;
+			min-height: 100vh;
+			display: flex;
+			flex-direction: column;
+		}
+
+		h1, h2, h3 {
+			margin: 0;
+			font-weight: 600;
+		}
+
+		select,
+		input[type="color"],
+		input[type="range"] {
+			font: inherit;
+		}
+
+		main {
+			flex: 1;
+			display: grid;
+			grid-template-columns: minmax(320px, 360px) 1fr;
+			gap: 2rem;
+			padding: clamp(1.5rem, 2vw + 1rem, 3rem);
+			align-items: start;
+			box-sizing: border-box;
+		}
+
+		@media (max-width: 900px) {
+			main {
+				grid-template-columns: 1fr;
+			}
+		}
+
+		.panel {
+			background: color-mix(in srgb, Canvas 92%, CanvasText 8%);
+			border-radius: 20px;
+			padding: 1.5rem;
+			box-shadow: 0 1rem 3rem -1.5rem rgb(0 0 0 / 0.35);
+		}
+
+		.panel h2 {
+			font-size: 1.35rem;
+			margin-bottom: 0.75rem;
+		}
+
+		.hidden {
+			display: none !important;
+		}
+
+		label {
+			display: inline-flex;
+			align-items: center;
+			gap: 0.5rem;
+			font-size: 0.95rem;
+		}
+
+		.setting {
+			margin-bottom: 1.25rem;
+		}
+
+		input[type="range"] {
+			width: 100%;
+		}
+
+		.color-samples {
+			display: flex;
+			gap: 0.5rem;
+			align-items: center;
+			margin-top: 0.75rem;
+		}
+
+		.color-chip {
+			flex: 1;
+			height: 2rem;
+			border-radius: 999px;
+			border: 1px solid rgb(0 0 0 / 0.15);
+		}
+
+		button {
+			font: inherit;
+			border-radius: 999px;
+			border: none;
+			padding: 0.65rem 1.5rem;
+			cursor: pointer;
+			background: linear-gradient(120deg, #5769ff, #ff4f7b);
+			color: white;
+			box-shadow: 0 0.75rem 1.5rem -1rem rgb(0 0 0 / 0.4);
+			transition: transform 120ms ease, box-shadow 120ms ease;
+		}
+
+		button.ghost {
+			background: transparent;
+			color: inherit;
+			border: 1px solid color-mix(in srgb, CanvasText 35%, Canvas 65%);
+			box-shadow: none;
+		}
+
+		button:disabled {
+			cursor: not-allowed;
+			opacity: 0.6;
+			box-shadow: none;
+		}
+
+		button:not(:disabled):hover {
+			transform: translateY(-1px);
+			box-shadow: 0 1rem 2rem -1.25rem rgb(0 0 0 / 0.6);
+		}
+
+		#sample {
+			line-height: 1.65;
+			font-size: clamp(1rem, 0.75rem + 0.5vw, 1.15rem);
+			max-width: 70ch;
+			margin: 1.25rem auto 0;
+			padding: 1.5rem 1.75rem 3rem;
+			border-radius: 20px;
+			background: color-mix(in srgb, Canvas 96%, CanvasText 4%);
+			min-height: 18rem;
+			position: relative;
+			overflow: visible;
+		}
+
+		#sample:focus-visible {
+			outline: 3px solid color-mix(in srgb, #5769ff 45%, Canvas 55%);
+			outline-offset: 6px;
+		}
+
+		#sample p {
+			margin-bottom: 1.3rem;
+		}
+
+		.badge {
+			display: inline-flex;
+			align-items: center;
+			gap: 0.5ch;
+			font-size: 0.85rem;
+			padding: 0.35rem 0.75rem;
+			border-radius: 999px;
+			background: color-mix(in srgb, CanvasText 12%, Canvas 88%);
+		}
+
+		#modeDescription {
+			margin: -0.25rem 0 1.25rem;
+			font-size: 0.85rem;
+			color: color-mix(in srgb, CanvasText 65%, Canvas 35%);
+		}
+
+		header {
+			display: flex;
+			flex-wrap: wrap;
+			justify-content: space-between;
+			align-items: center;
+			gap: 1rem;
+			padding: clamp(1.25rem, 3vw, 2.25rem) clamp(1.5rem, 2vw + 1rem, 3rem) 0;
+		}
+
+		#gradientSizeValue {
+			font-variant-numeric: tabular-nums;
+		}
+
+		.details {
+			font-size: 0.9rem;
+			color: color-mix(in srgb, CanvasText 60%, Canvas 40%);
+			margin: 1rem 0 0;
+		}
+
+		footer {
+			padding: 0  clamp(1.5rem, 2vw + 1rem, 3rem) 2rem;
+			font-size: 0.85rem;
+			color: color-mix(in srgb, CanvasText 55%, Canvas 45%);
+		}
+
+		.overlay-layer {
+			position: absolute;
+			top: 0;
+			left: 0;
+			width: 100%;
+			height: 100%;
+			pointer-events: none;
+		}
+
+		.line-band {
+			position: absolute;
+			left: -0.75rem;
+			right: -0.75rem;
+			height: var(--band-height, 2.25rem);
+			border-radius: 12px;
+		}
+
+		.focus-window {
+			position: absolute;
+			left: 0;
+			width: 100%;
+			height: 3rem;
+			background: color-mix(in srgb, #5769ff 14%, Canvas 86%);
+			box-shadow: 0 10px 30px -20px rgba(0, 0, 0, 0.5);
+			border-radius: 12px;
+			opacity: 0.8;
+		}
+
+		.gutter-layer {
+			position: absolute;
+			top: 0;
+			left: -2.5rem;
+			width: 2rem;
+			pointer-events: none;
+		}
+
+		.gutter-marker,
+		.symbol-marker {
+			position: absolute;
+			width: 0.75rem;
+			height: 0.75rem;
+			border-radius: 50%;
+			background: color-mix(in srgb, CanvasText 55%, Canvas 45%);
+			opacity: 0.75;
+		}
+
+		.symbol-layer {
+			position: absolute;
+			top: 0;
+			right: -2.25rem;
+			width: 2rem;
+			pointer-events: none;
+		}
+
+		.symbol-marker {
+			border-radius: 0;
+			width: auto;
+			height: auto;
+			font-size: 0.8rem;
+			background: none;
+			color: color-mix(in srgb, CanvasText 65%, Canvas 35%);
+		}
+
+		.chunk {
+			display: inline-block;
+			padding: 0.05em 0.1em;
+		}
+
+		.chunk-accent {
+			background: color-mix(in srgb, #ff4f7b 20%, Canvas 80%);
+			border-radius: 0.3em;
+		}
+
+		#sample.mode-column-gradient::before {
+			content: "";
+			position: absolute;
+			top: 0;
+			left: 0;
+			width: var(--column-width, 1.25rem);
+			height: 100%;
+			background: linear-gradient(180deg, var(--column-color-start, #5769ff), var(--column-color-end, #ff4f7b));
+			opacity: 0.75;
+			pointer-events: none;
+		}
+
+		span.dimmed-line {
+			opacity: 0.35;
+		}
+
+		span.active-line {
+			opacity: 1;
+		}
+
+		.audio-indicator {
+			position: absolute;
+			bottom: 1rem;
+			right: 1.5rem;
+			font-size: 0.8rem;
+			padding: 0.35rem 0.65rem;
+			border-radius: 999px;
+			background: color-mix(in srgb, CanvasText 15%, Canvas 85%);
+			color: color-mix(in srgb, CanvasText 70%, Canvas 30%);
+		}
+	</style>
+</head>
+<body>
+	<header>
+		<div>
+			<h1>WaspLine Reader Simulator</h1>
+			<p class="details">Try the color-guided reading effect and tweak settings without installing the extension.</p>
+		</div>
+		<span class="badge">Demo only · No Chrome APIs required</span>
+	</header>
+
+	<main>
+		<section class="panel" aria-labelledby="controls-heading">
+			<h2 id="controls-heading">Extension popup preview</h2>
+			<form id="controls" autocomplete="off">
+				<div class="setting">
+					<label>
+						<input type="checkbox" id="enabled" />
+						Enable WaspLine
+					</label>
+				</div>
+
+				<div class="setting">
+					<label for="mode">Visualization mode</label>
+					<select id="mode">
+						<option value="bidirectional-gradient">Bidirectional gradient (reference)</option>
+						<option value="alternating-bands">Alternating background bands</option>
+						<option value="focus-window">Dynamic focus window</option>
+						<option value="gutter-markers">Gutter markers</option>
+						<option value="letter-spacing">Alternating letter spacing</option>
+						<option value="font-weight">Alternating font weight</option>
+						<option value="underline-overline">Underline / overline rhythm</option>
+						<option value="word-chunking">Word chunking groups</option>
+						<option value="column-gradient">Vertical column gradient</option>
+						<option value="paragraph-gradient">Per-paragraph wash</option>
+						<option value="symbolic-overlays">Line-end symbols</option>
+						<option value="contrast-dimmer">Dim surrounding lines</option>
+						<option value="audio-cadence">Audio cadence metronome</option>
+					</select>
+				</div>
+
+				<p id="modeDescription"></p>
+
+				<div class="setting" data-control-group="gradient">
+					<label for="gradient_size"><span id="gradientSizeLabel">Gradient Size</span> (<span id="gradientSizeValue">50</span>)</label>
+					<input type="range" id="gradient_size" min="0" max="100" value="50" />
+				</div>
+
+				<div class="setting" data-control-group="color-pair">
+					<label for="color1">Color 1</label>
+					<input type="color" id="color1" value="#0000FF" />
+				</div>
+
+				<div class="setting" data-control-group="color-pair">
+					<label for="color2">Color 2</label>
+					<input type="color" id="color2" value="#FF0000" />
+				</div>
+
+				<div class="setting" data-control-group="color-text">
+					<label for="color_text">Text color</label>
+					<input type="color" id="color_text" value="#000000" />
+				</div>
+
+				<div class="color-samples" aria-hidden="true" data-control-group="color-samples">
+					<div id="chip-color1" class="color-chip"></div>
+					<div id="chip-color2" class="color-chip"></div>
+					<div id="chip-text" class="color-chip"></div>
+				</div>
+
+				<div class="setting" style="display:flex; gap:0.75rem; flex-wrap: wrap;">
+					<button type="button" id="apply">Apply effect</button>
+					<button type="button" id="reset" class="ghost">Reset</button>
+				</div>
+			</form>
+		</section>
+
+		<section class="panel" aria-labelledby="preview-heading">
+			<h2 id="preview-heading">Preview article</h2>
+			<div class="details">Toggle “Enable WaspLine” or use Apply to see how the extension colors live content. Resize the window to test wrap detection.</div>
+			<article id="sample" contenteditable="true" spellcheck="false">
+				<p>Reading on screens introduces tiny visual frictions&mdash;our eyes can lose track of the start of the next line, especially in dense paragraphs. Color gradients create a subtle bridge between line endings and beginnings so the eye naturally follows the hue transition.</p>
+				<p>WaspLine alternates the gradient direction, so the left edge of odd lines and the right edge of even lines receive the strongest color accent. That mirrored pattern makes it easier to jump between lines without searching for your place.</p>
+				<p>Use the controls to experiment with gradient length and colors. You can try high-contrast gradients for rapid scanning, or gentle pastel pairs for everyday reading without fatigue. Toggle the effect off to compare the baseline experience.</p>
+				<p>Because this is a standalone simulator, you can copy any article text into the preview area. The same line wrap detection logic used in the browser extension powers this demo.</p>
+			</article>
+		</section>
+	</main>
+
+	<footer>
+		<p>Tip: paste your own content into the preview article to see how WaspLine reacts to different layouts, columns, and fonts.</p>
+	</footer>
+
+	<script>
+	(function () {
+		'use strict';
+
+		function wrapWords(text, before, after, join) {
+			const delimiter = join || '';
+			return text.split('').map((word) => `${before}${word}${after}`).join(delimiter);
+		}
+
+		function wrapWordsInChildElement(node) {
+			if (node.nodeName === '#text') {
+				const characters = node.textContent.split('');
+
+				for (let i = 0; i < characters.length; i += 1) {
+					const char = characters[i];
+					if (char.length > 0) {
+						const span = node.ownerDocument.createElement('span');
+						span.className = 'js-detect-wrap';
+						span.innerText = char;
+						node.parentNode.insertBefore(span, node);
+					}
+				}
+
+				node.parentNode.removeChild(node);
+			} else if (node.innerText) {
+				node.innerHTML = wrapWords(node.innerText, '<span class="js-detect-wrap">', '</span>');
+			}
+		}
+
+		function wrapWordsInElement(node) {
+			if (!node.firstChild) {
+				wrapWordsInChildElement(node);
+				return;
+			}
+
+			const siblings = [];
+			let pointer = node.firstChild;
+			do {
+				siblings.push(pointer);
+				pointer = pointer.nextSibling;
+			} while (pointer);
+
+			for (let i = 0; i < siblings.length; i += 1) {
+				wrapWordsInElement(siblings[i]);
+			}
+		}
+
+		function getLines(element) {
+			wrapWordsInElement(element);
+
+			const spans = element.getElementsByClassName('js-detect-wrap');
+			const lines = [];
+			let currentLine = [];
+			let lastOffset = 0;
+
+			for (let i = 0; i < spans.length; i += 1) {
+				const span = spans[i];
+				const offset = span.offsetTop + span.getBoundingClientRect().height;
+
+				if (offset === lastOffset) {
+					currentLine.push(span);
+				} else {
+					if (currentLine.length > 0) {
+						lines.push(currentLine);
+					}
+
+					currentLine = [span];
+				}
+
+				lastOffset = offset;
+			}
+
+			if (currentLine.length > 0) {
+				lines.push(currentLine);
+			}
+
+			return lines;
+		}
+
+		function lerp(v0, v1, t) {
+			return v0 * (1 - t) + v1 * t;
+		}
+
+		function clamp01(value) {
+			return Math.max(0, Math.min(1, value));
+		}
+
+		function hexToRgb(hex) {
+			return hex.replace('#', '').match(/.{1,2}/g).map((chunk) => parseInt(chunk, 16));
+		}
+
+		function applyGradient(paragraphs, options) {
+			const { colors, colorText, gradientSize } = options;
+			const baseColor = hexToRgb(colorText);
+			let colorIndex = 0;
+			let lineNumber = 0;
+
+			for (const paragraph of paragraphs) {
+				const lines = getLines(paragraph);
+
+				for (let line of lines) {
+					const activeColor = hexToRgb(colors[colorIndex]);
+					const isLeft = lineNumber % 2 === 0;
+					if (isLeft) {
+						line = Array.from(line).reverse();
+					}
+
+					const denominator = (line.length * gradientSize) / 50;
+
+					for (let position = 0; position < line.length; position += 1) {
+						const span = line[position];
+						const t = gradientSize <= 0 ? 0 : clamp01(1 - position / denominator);
+						const red = lerp(baseColor[0], activeColor[0], t);
+						const green = lerp(baseColor[1], activeColor[1], t);
+						const blue = lerp(baseColor[2], activeColor[2], t);
+						span.style.color = `rgb(${red | 0}, ${green | 0}, ${blue | 0})`;
+					}
+
+					if (!isLeft) {
+						colorIndex = (colorIndex + 1) % colors.length;
+					}
+					lineNumber += 1;
+				}
+			}
+		}
+
+		function simulateExtension() {
+			const controls = document.getElementById('controls');
+			const enabled = document.getElementById('enabled');
+			const gradientSize = document.getElementById('gradient_size');
+			const color1 = document.getElementById('color1');
+			const color2 = document.getElementById('color2');
+			const colorText = document.getElementById('color_text');
+			const applyButton = document.getElementById('apply');
+			const resetButton = document.getElementById('reset');
+			const gradientSizeValue = document.getElementById('gradientSizeValue');
+			const sample = document.getElementById('sample');
+			const defaultHTML = sample.innerHTML;
+			let baselineHTML = defaultHTML;
+
+			const chips = {
+				color1: document.getElementById('chip-color1'),
+				color2: document.getElementById('chip-color2'),
+				text: document.getElementById('chip-text')
+			};
+
+			function updateChips() {
+				chips.color1.style.background = color1.value;
+				chips.color2.style.background = color2.value;
+				chips.text.style.background = colorText.value;
+			}
+
+			function resetToBaseline() {
+				sample.innerHTML = baselineHTML;
+			}
+
+			function runGradient() {
+				resetToBaseline();
+				const paragraphs = sample.getElementsByTagName('p');
+				applyGradient(paragraphs, {
+					colors: [color1.value, color2.value],
+					colorText: colorText.value,
+					gradientSize: Number(gradientSize.value)
+				});
+			}
+
+			function handleToggle() {
+				if (enabled.checked) {
+					applyButton.disabled = false;
+					runGradient();
+				} else {
+					applyButton.disabled = true;
+					resetToBaseline();
+				}
+			}
+
+			controls.addEventListener('input', (event) => {
+				if (event.target === gradientSize) {
+					gradientSizeValue.textContent = gradientSize.value;
+				}
+
+				updateChips();
+
+				if (enabled.checked && event.target.matches('input')) {
+					runGradient();
+				}
+			});
+
+			enabled.addEventListener('change', handleToggle);
+			applyButton.addEventListener('click', runGradient);
+			resetButton.addEventListener('click', () => {
+				enabled.checked = false;
+				baselineHTML = defaultHTML;
+				handleToggle();
+			});
+
+			sample.addEventListener('input', () => {
+				if (!enabled.checked) {
+					baselineHTML = sample.innerHTML;
+				}
+			});
+
+			updateChips();
+			applyButton.disabled = true;
+		}
+
+		simulateExtension();
+	})();
+	</script>
+</body>
+</html>
