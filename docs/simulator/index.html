@@ -505,6 +505,473 @@
 			}
 		}
 
+		function hexToRgba(hex, alpha) {
+			const [r, g, b] = hexToRgb(hex);
+			return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+		}
+
+		function computeLines(container) {
+			const paragraphs = container.getElementsByTagName('p');
+			const sampleRect = container.getBoundingClientRect();
+			const lines = [];
+			let index = 0;
+
+			for (const paragraph of paragraphs) {
+				const lineFragments = getLines(paragraph);
+
+				for (const fragment of lineFragments) {
+					if (!fragment.length) {
+						continue;
+					}
+
+					const spans = fragment.slice();
+					const firstRect = spans[0].getBoundingClientRect();
+					const lastRect = spans[spans.length - 1].getBoundingClientRect();
+
+					lines.push({
+						index,
+						spans,
+						top: firstRect.top - sampleRect.top + container.scrollTop,
+						height: firstRect.height,
+						left: firstRect.left - sampleRect.left,
+						right: lastRect.right - sampleRect.left,
+						text: spans.map((span) => span.innerText).join('')
+					});
+
+					index += 1;
+				}
+			}
+
+			return lines;
+		}
+
+		function createOverlay(container, className) {
+			const overlay = document.createElement('div');
+			overlay.className = className ? `overlay-layer ${className}` : 'overlay-layer';
+			container.appendChild(overlay);
+			return overlay;
+		}
+
+		function resolveLineIndexByY(lines, y) {
+			if (!lines.length) {
+				return -1;
+			}
+
+			let closestIndex = 0;
+			let closestDistance = Infinity;
+
+			for (let i = 0; i < lines.length; i += 1) {
+				const line = lines[i];
+				const start = line.top;
+				const end = start + line.height;
+				if (y >= start && y <= end) {
+					return i;
+				}
+
+				const center = start + line.height / 2;
+				const distance = Math.abs(y - center);
+				if (distance < closestDistance) {
+					closestDistance = distance;
+					closestIndex = i;
+				}
+			}
+
+			return closestIndex;
+		}
+
+		const modeConfigs = {
+			'bidirectional-gradient': {
+				description: 'Alternates a left-to-right and right-to-left gradient every line to guide your eyes between line endings and beginnings.',
+				controls: ['gradient', 'color-pair', 'color-text', 'color-samples'],
+				slider: { label: 'Gradient size', min: 0, max: 100, step: 1, defaultValue: 50 },
+				apply: ({ colors, colorText, gradientSize }) => {
+					const paragraphs = sample.getElementsByTagName('p');
+					applyGradient(paragraphs, { colors, colorText, gradientSize });
+				}
+			},
+			'alternating-bands': {
+				description: 'Paints alternating translucent bands behind each line for a rhythm similar to guided reading overlays.',
+				controls: ['gradient', 'color-pair', 'color-text', 'color-samples'],
+				slider: { label: 'Band intensity', min: 0, max: 100, step: 1, defaultValue: 55 },
+				apply: ({ colors, colorText, gradientSize }) => {
+					sample.style.color = colorText;
+					const overlay = createOverlay(sample);
+					const lines = computeLines(sample);
+					const intensity = 0.18 + clamp01(gradientSize / 100) * 0.5;
+
+					for (const line of lines) {
+						const band = document.createElement('div');
+						band.className = 'line-band';
+						band.style.top = `${line.top}px`;
+						band.style.setProperty('--band-height', `${line.height + 6}px`);
+						band.style.background = hexToRgba(colors[line.index % colors.length], intensity);
+						overlay.appendChild(band);
+					}
+				}
+			},
+			'focus-window': {
+				description: 'Adds a soft focus window that tracks your cursor so you can follow one line at a time.',
+				controls: ['gradient', 'color-pair', 'color-text', 'color-samples'],
+				slider: { label: 'Window height', min: 20, max: 140, step: 5, defaultValue: 60 },
+				apply: ({ colors, colorText, gradientSize }) => {
+					sample.style.color = colorText;
+					const overlay = createOverlay(sample);
+					const focusWindow = document.createElement('div');
+					focusWindow.className = 'focus-window';
+					const alpha = 0.12 + clamp01(gradientSize / 140) * 0.55;
+					focusWindow.style.background = `linear-gradient(90deg, ${hexToRgba(colors[0], alpha)} 0%, ${hexToRgba(colors[1], alpha)} 100%)`;
+					overlay.appendChild(focusWindow);
+					const lines = computeLines(sample);
+					if (!lines.length) {
+						return () => {};
+					}
+
+					let activeIndex = 0;
+
+					function moveTo(index) {
+						const line = lines[index];
+						focusWindow.style.opacity = '0.85';
+						focusWindow.style.top = `${line.top - 4}px`;
+						const padding = clamp01(gradientSize / 140) * line.height;
+						focusWindow.style.height = `${line.height + padding}px`;
+					}
+
+					moveTo(activeIndex);
+
+					const onMouseMove = (event) => {
+						const rect = sample.getBoundingClientRect();
+						const localY = event.clientY - rect.top + sample.scrollTop;
+						const index = resolveLineIndexByY(lines, localY);
+						if (index >= 0 && index !== activeIndex) {
+							activeIndex = index;
+							moveTo(activeIndex);
+						}
+					};
+
+					const onLeave = () => {
+						focusWindow.style.opacity = '0';
+					};
+
+					sample.addEventListener('mousemove', onMouseMove);
+					sample.addEventListener('mouseleave', onLeave);
+					sample.addEventListener('mouseenter', () => moveTo(activeIndex));
+
+					return () => {
+						sample.removeEventListener('mousemove', onMouseMove);
+						sample.removeEventListener('mouseleave', onLeave);
+					};
+				}
+			},
+			'gutter-markers': {
+				description: 'Places alternating colored markers in the gutter to anchor each line visually.',
+				controls: ['gradient', 'color-pair', 'color-text', 'color-samples'],
+				slider: { label: 'Marker size', min: 6, max: 28, step: 1, defaultValue: 14 },
+				apply: ({ colors, colorText, gradientSize }) => {
+					sample.style.color = colorText;
+					const layer = document.createElement('div');
+					layer.className = 'gutter-layer';
+					sample.appendChild(layer);
+					const lines = computeLines(sample);
+					const size = gradientSize;
+
+					for (const line of lines) {
+						const marker = document.createElement('div');
+						marker.className = 'gutter-marker';
+						marker.style.width = `${size}px`;
+						marker.style.height = `${size}px`;
+						marker.style.top = `${line.top + line.height / 2 - size / 2}px`;
+						marker.style.background = colors[line.index % colors.length];
+						layer.appendChild(marker);
+					}
+				}
+			},
+			'letter-spacing': {
+				description: 'Alternates letter spacing between lines to change the perceived texture of the paragraph.',
+				controls: ['gradient', 'color-pair', 'color-text', 'color-samples'],
+				slider: { label: 'Spacing amount', min: 0, max: 80, step: 5, defaultValue: 30 },
+				apply: ({ colors, colorText, gradientSize }) => {
+					sample.style.color = colorText;
+					const lines = computeLines(sample);
+					const spacing = (gradientSize / 100) * 0.4;
+
+					for (const line of lines) {
+						const spacingValue = line.index % 2 === 0 ? spacing : spacing * 0.25;
+						for (const span of line.spans) {
+							span.style.letterSpacing = `${spacingValue.toFixed(3)}em`;
+							span.style.color = colors[line.index % colors.length];
+						}
+					}
+				}
+			},
+			'font-weight': {
+				description: 'Alternates between heavier and lighter weights to create a pulse through the paragraph.',
+				controls: ['gradient', 'color-pair', 'color-text', 'color-samples'],
+				slider: { label: 'Weight contrast', min: 0, max: 100, step: 5, defaultValue: 45 },
+				apply: ({ colors, colorText, gradientSize }) => {
+					sample.style.color = colorText;
+					const lines = computeLines(sample);
+					const heavy = Math.min(900, 500 + Math.round(gradientSize * 3.5));
+					const light = Math.max(200, heavy - 350);
+
+					for (const line of lines) {
+						const weight = line.index % 2 === 0 ? heavy : light;
+						for (const span of line.spans) {
+							span.style.fontWeight = weight;
+							span.style.color = colors[line.index % colors.length];
+						}
+					}
+				}
+			},
+			'underline-overline': {
+				description: 'Adds an underline then an overline on alternating lines to mark cadence.',
+				controls: ['gradient', 'color-pair', 'color-text', 'color-samples'],
+				slider: { label: 'Decoration weight', min: 1, max: 12, step: 1, defaultValue: 4 },
+				apply: ({ colors, colorText, gradientSize }) => {
+					sample.style.color = colorText;
+					const lines = computeLines(sample);
+					const thickness = Math.max(1, gradientSize);
+
+					for (const line of lines) {
+						const decoration = line.index % 2 === 0 ? 'underline' : 'overline';
+						const color = colors[line.index % colors.length];
+						for (const span of line.spans) {
+							span.style.textDecoration = decoration;
+							span.style.textDecorationColor = color;
+							span.style.textDecorationThickness = `${thickness / 3}px`;
+						}
+					}
+				}
+			},
+			'word-chunking': {
+				description: 'Groups words into soft capsules to highlight phrasing and natural pauses.',
+				controls: ['gradient', 'color-pair', 'color-text', 'color-samples'],
+				slider: { label: 'Words per chunk', min: 1, max: 5, step: 1, defaultValue: 3 },
+				apply: ({ colors, colorText, gradientSize }) => {
+					sample.style.color = colorText;
+					const paragraphs = sample.getElementsByTagName('p');
+					const chunkSize = Math.max(1, gradientSize);
+
+					for (const paragraph of paragraphs) {
+						const tokens = paragraph.textContent.split(/(\s+)/);
+						const fragment = document.createDocumentFragment();
+						let chunkContent = '';
+						let wordsInChunk = 0;
+						let chunkIndex = 0;
+
+						function appendChunk(content) {
+							if (!content) {
+								return;
+							}
+							const span = document.createElement('span');
+							span.className = 'chunk';
+							if (chunkIndex % 2 === 0) {
+								span.classList.add('chunk-accent');
+								span.style.background = hexToRgba(colors[0], 0.25);
+							} else {
+								span.style.background = hexToRgba(colors[1], 0.2);
+							}
+							span.textContent = content;
+							fragment.appendChild(span);
+							chunkIndex += 1;
+						}
+
+						for (const token of tokens) {
+							if (!token.trim()) {
+								if (chunkContent) {
+									chunkContent += token;
+								} else {
+									fragment.appendChild(document.createTextNode(token));
+								}
+								continue;
+							}
+
+							chunkContent += token;
+							wordsInChunk += 1;
+							if (wordsInChunk >= chunkSize) {
+								appendChunk(chunkContent);
+								chunkContent = '';
+								wordsInChunk = 0;
+							}
+						}
+
+						appendChunk(chunkContent);
+						paragraph.innerHTML = '';
+						paragraph.appendChild(fragment);
+					}
+				}
+			},
+			'column-gradient': {
+				description: 'Adds a narrow gradient column at the start of the text to act like a visual rail.',
+				controls: ['gradient', 'color-pair', 'color-text', 'color-samples'],
+				slider: { label: 'Column width', min: 0.5, max: 4, step: 0.1, defaultValue: 1.25 },
+				apply: ({ colors, colorText, gradientSize }) => {
+					sample.style.color = colorText;
+					sample.classList.add('mode-column-gradient');
+					sample.style.setProperty('--column-width', `${gradientSize}rem`);
+					sample.style.setProperty('--column-color-start', colors[0]);
+					sample.style.setProperty('--column-color-end', colors[1]);
+
+					return () => {
+						sample.classList.remove('mode-column-gradient');
+						sample.style.removeProperty('--column-width');
+						sample.style.removeProperty('--column-color-start');
+						sample.style.removeProperty('--column-color-end');
+					};
+				}
+			},
+			'paragraph-gradient': {
+				description: 'Bathes each paragraph in a low-contrast gradient wash to distinguish sections.',
+				controls: ['gradient', 'color-pair', 'color-text', 'color-samples'],
+				slider: { label: 'Wash strength', min: 0, max: 100, step: 5, defaultValue: 40 },
+				apply: ({ colors, colorText, gradientSize }) => {
+					sample.style.color = colorText;
+					const paragraphs = sample.getElementsByTagName('p');
+					const alpha = 0.12 + clamp01(gradientSize / 100) * 0.45;
+
+					for (let i = 0; i < paragraphs.length; i += 1) {
+						const paragraph = paragraphs[i];
+						const start = colors[i % colors.length];
+						const end = colors[(i + 1) % colors.length];
+						paragraph.style.background = `linear-gradient(90deg, ${hexToRgba(start, alpha)} 0%, ${hexToRgba(end, alpha * 0.3)} 70%, transparent 100%)`;
+						paragraph.style.padding = '0.4rem 0.6rem';
+						paragraph.style.marginInline = '-0.6rem';
+						paragraph.style.borderRadius = '12px';
+					}
+				}
+			},
+			'symbolic-overlays': {
+				description: 'Drops subtle symbols in the right gutter so you can anticipate the next line transition.',
+				controls: ['gradient', 'color-pair', 'color-text', 'color-samples'],
+				slider: { label: 'Symbol size', min: 0.6, max: 1.6, step: 0.05, defaultValue: 0.9 },
+				apply: ({ colors, colorText, gradientSize }) => {
+					sample.style.color = colorText;
+					const layer = document.createElement('div');
+					layer.className = 'symbol-layer';
+					sample.appendChild(layer);
+					const lines = computeLines(sample);
+					const symbols = ['◆', '●', '▲', '■', '✶', '○'];
+
+					for (const line of lines) {
+						const marker = document.createElement('div');
+						marker.className = 'symbol-marker';
+						marker.textContent = symbols[line.index % symbols.length];
+						marker.style.top = `${line.top + line.height / 2}px`;
+						marker.style.transform = 'translateY(-50%)';
+						marker.style.color = colors[line.index % colors.length];
+						marker.style.fontSize = `${gradientSize}rem`;
+						layer.appendChild(marker);
+					}
+				}
+			},
+			'contrast-dimmer': {
+				description: 'Dims the surrounding lines until you hover near one, keeping your focus locked in place.',
+				controls: ['gradient', 'color-pair', 'color-text', 'color-samples'],
+				slider: { label: 'Focus sensitivity', min: 10, max: 90, step: 5, defaultValue: 40 },
+				apply: ({ colors, colorText, gradientSize }) => {
+					sample.style.color = colorText;
+					const lines = computeLines(sample);
+					let activeIndex = null;
+
+					for (const line of lines) {
+						for (const span of line.spans) {
+							span.classList.add('dimmed-line');
+						}
+					}
+
+					const onMove = (event) => {
+						const rect = sample.getBoundingClientRect();
+						const localY = event.clientY - rect.top + sample.scrollTop;
+						const nextIndex = resolveLineIndexByY(lines, localY);
+						if (nextIndex < 0) {
+							return;
+						}
+
+						if (activeIndex !== null && activeIndex !== nextIndex) {
+							for (const span of lines[activeIndex].spans) {
+								span.classList.remove('active-line');
+								span.style.color = colorText;
+							}
+						}
+
+						activeIndex = nextIndex;
+						const tint = clamp01(gradientSize / 100) * 0.6;
+						for (const span of lines[activeIndex].spans) {
+							span.classList.add('active-line');
+							span.style.color = hexToRgba(colors[activeIndex % colors.length], 0.6 + tint);
+						}
+					};
+
+					const onLeave = () => {
+						if (activeIndex === null) {
+							return;
+						}
+						for (const span of lines[activeIndex].spans) {
+							span.classList.remove('active-line');
+							span.style.color = colorText;
+						}
+						activeIndex = null;
+					};
+
+					sample.addEventListener('mousemove', onMove);
+					sample.addEventListener('mouseleave', onLeave);
+
+					return () => {
+						sample.removeEventListener('mousemove', onMove);
+						sample.removeEventListener('mouseleave', onLeave);
+					};
+				}
+			},
+			'audio-cadence': {
+				description: 'Simulates a metronome by highlighting each line in sequence with a tempo badge.',
+				controls: ['gradient', 'color-pair', 'color-text', 'color-samples'],
+				slider: { label: 'Tempo (faster ←→ slower)', min: 20, max: 160, step: 5, defaultValue: 80 },
+				apply: ({ colors, colorText, gradientSize }) => {
+					sample.style.color = colorText;
+					const overlay = createOverlay(sample);
+					const indicator = document.createElement('div');
+					indicator.className = 'audio-indicator';
+					overlay.appendChild(indicator);
+					const lines = computeLines(sample);
+					if (!lines.length) {
+						indicator.textContent = 'No lines detected';
+						return () => {};
+					}
+
+					let activeIndex = -1;
+					const intervalMs = Math.max(350, 1800 - gradientSize * 10);
+
+					function highlightLine(index) {
+						if (activeIndex >= 0) {
+							for (const span of lines[activeIndex].spans) {
+								span.style.background = '';
+								span.style.color = colorText;
+							}
+						}
+
+						activeIndex = index;
+						const color = colors[index % colors.length];
+						for (const span of lines[index].spans) {
+							span.style.background = hexToRgba(color, 0.25);
+							span.style.color = color;
+						}
+						const bpm = Math.round(60000 / intervalMs);
+						indicator.textContent = `Tempo ${bpm} bpm · Line ${index + 1}/${lines.length}`;
+					}
+
+					let ticker = 0;
+					highlightLine(0);
+					const timer = setInterval(() => {
+						ticker = (ticker + 1) % lines.length;
+						highlightLine(ticker);
+					}, intervalMs);
+
+					return () => {
+						clearInterval(timer);
+					};
+				}
+			}
+		};
+
 		function simulateExtension() {
 			const controls = document.getElementById('controls');
 			const enabled = document.getElementById('enabled');
@@ -512,45 +979,127 @@
 			const color1 = document.getElementById('color1');
 			const color2 = document.getElementById('color2');
 			const colorText = document.getElementById('color_text');
+			const modeSelect = document.getElementById('mode');
 			const applyButton = document.getElementById('apply');
 			const resetButton = document.getElementById('reset');
 			const gradientSizeValue = document.getElementById('gradientSizeValue');
+			const gradientSizeLabel = document.getElementById('gradientSizeLabel');
+			const modeDescription = document.getElementById('modeDescription');
 			const sample = document.getElementById('sample');
 			const defaultHTML = sample.innerHTML;
 			let baselineHTML = defaultHTML;
-
 			const chips = {
 				color1: document.getElementById('chip-color1'),
 				color2: document.getElementById('chip-color2'),
 				text: document.getElementById('chip-text')
 			};
+			const controlGroups = new Map();
+			const sliderValues = {};
+			let cleanupCurrentMode = null;
+			let visibleControls = new Set();
+
+			for (const node of document.querySelectorAll('[data-control-group]')) {
+				const group = node.dataset.controlGroup;
+				if (!controlGroups.has(group)) {
+					controlGroups.set(group, []);
+				}
+				controlGroups.get(group).push(node);
+			}
 
 			function updateChips() {
 				chips.color1.style.background = color1.value;
 				chips.color2.style.background = color2.value;
 				chips.text.style.background = colorText.value;
+				chips.color1.style.display = visibleControls.has('color-pair') ? '' : 'none';
+				chips.color2.style.display = visibleControls.has('color-pair') ? '' : 'none';
+				chips.text.style.display = visibleControls.has('color-text') ? '' : 'none';
 			}
 
 			function resetToBaseline() {
+				sample.classList.remove('mode-column-gradient');
+				sample.removeAttribute('style');
 				sample.innerHTML = baselineHTML;
 			}
 
-			function runGradient() {
+			function configureControls(modeKey) {
+				const config = modeConfigs[modeKey];
+				if (!config) {
+					return;
+				}
+
+				modeDescription.textContent = config.description;
+				visibleControls = new Set(config.controls || []);
+
+				for (const [group, nodes] of controlGroups.entries()) {
+					const show = visibleControls.has(group);
+					for (const node of nodes) {
+						node.classList.toggle('hidden', !show);
+					}
+				}
+
+				const sliderConfig = config.slider;
+				if (sliderConfig) {
+					gradientSize.classList.remove('hidden');
+					gradientSizeLabel.textContent = sliderConfig.label || 'Intensity';
+					gradientSize.min = sliderConfig.min;
+					gradientSize.max = sliderConfig.max;
+					gradientSize.step = sliderConfig.step || 1;
+					const stored = sliderValues[modeKey];
+					if (stored !== undefined) {
+						gradientSize.value = stored;
+					} else if (sliderConfig.defaultValue !== undefined) {
+						gradientSize.value = sliderConfig.defaultValue;
+					}
+					gradientSizeValue.textContent = gradientSize.value;
+				} else {
+					gradientSizeLabel.textContent = 'Intensity';
+					gradientSizeValue.textContent = gradientSize.value;
+				}
+
+				updateChips();
+			}
+
+			function applyCurrentMode() {
+				if (!enabled.checked) {
+					return;
+				}
+
+				if (cleanupCurrentMode) {
+					cleanupCurrentMode();
+					cleanupCurrentMode = null;
+				}
+
 				resetToBaseline();
-				const paragraphs = sample.getElementsByTagName('p');
-				applyGradient(paragraphs, {
+
+				const modeKey = modeSelect.value;
+				const config = modeConfigs[modeKey];
+				if (!config) {
+					return;
+				}
+
+				const options = {
+					sample,
 					colors: [color1.value, color2.value],
 					colorText: colorText.value,
 					gradientSize: Number(gradientSize.value)
-				});
+				};
+
+				const cleanup = config.apply(options);
+				if (typeof cleanup === 'function') {
+					cleanupCurrentMode = cleanup;
+				}
 			}
 
 			function handleToggle() {
 				if (enabled.checked) {
 					applyButton.disabled = false;
-					runGradient();
+					applyCurrentMode();
 				} else {
 					applyButton.disabled = true;
+					if (cleanupCurrentMode) {
+						cleanupCurrentMode();
+						cleanupCurrentMode = null;
+					}
 					resetToBaseline();
 				}
 			}
@@ -558,21 +1107,34 @@
 			controls.addEventListener('input', (event) => {
 				if (event.target === gradientSize) {
 					gradientSizeValue.textContent = gradientSize.value;
+					sliderValues[modeSelect.value] = Number(gradientSize.value);
 				}
 
 				updateChips();
 
 				if (enabled.checked && event.target.matches('input')) {
-					runGradient();
+					applyCurrentMode();
+				}
+			});
+
+			modeSelect.addEventListener('change', () => {
+				configureControls(modeSelect.value);
+				if (enabled.checked) {
+					applyCurrentMode();
 				}
 			});
 
 			enabled.addEventListener('change', handleToggle);
-			applyButton.addEventListener('click', runGradient);
+			applyButton.addEventListener('click', applyCurrentMode);
 			resetButton.addEventListener('click', () => {
 				enabled.checked = false;
 				baselineHTML = defaultHTML;
+				if (cleanupCurrentMode) {
+					cleanupCurrentMode();
+					cleanupCurrentMode = null;
+				}
 				handleToggle();
+				configureControls(modeSelect.value);
 			});
 
 			sample.addEventListener('input', () => {
@@ -581,6 +1143,13 @@
 				}
 			});
 
+			window.addEventListener('resize', () => {
+				if (enabled.checked) {
+					applyCurrentMode();
+				}
+			});
+
+			configureControls(modeSelect.value);
 			updateChips();
 			applyButton.disabled = true;
 		}
