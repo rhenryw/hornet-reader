@@ -11,25 +11,38 @@ const enabled = document.getElementById('enabled');
 function eventHandler(e) {
 	// Send message to content script to color lines
 	function apply_gradient(tabs) {
+		if (!tabs || tabs.length === 0) {
+			console.warn('WaspLine: no active tab to apply gradient');
+			return;
+		}
+
 		chrome.tabs.sendMessage(tabs[0].id, {
 			command: "apply_gradient",
 			colors: [color1.value, color2.value],
 			color_text: color_text.value,
 			gradient_size: gradient_size.value
+		}, () => {
+			if (chrome.runtime.lastError) {
+				console.warn('WaspLine: unable to apply gradient', chrome.runtime.lastError);
+			}
 		});
 	}
 
 	// Send message to content script to reset lines
 	function reset(tabs) {
+		if (!tabs || tabs.length === 0) {
+			console.warn('WaspLine: no active tab to reset');
+			return;
+		}
+
 		chrome.tabs.sendMessage(tabs[0].id, {
 			command: "reset",
 			color_text: color_text.value
+		}, () => {
+			if (chrome.runtime.lastError) {
+				console.warn('WaspLine: unable to reset', chrome.runtime.lastError);
+			}
 		});
-	}
-
-	// Just log the error to the console.
-	function reportError(error) {
-		console.error(`${error}`);
 	}
 
 	// Store attributes into local storage
@@ -43,13 +56,9 @@ function eventHandler(e) {
 
 	// Dispatch depending on checkbox enabled state
 	if (enabled.checked) {
-		try {
-			chrome.tabs.query({ active: true, currentWindow: true }, apply_gradient);
-		} catch (e) { reportError(e); }
+		chrome.tabs.query({ active: true, currentWindow: true }, apply_gradient);
 	} else {
-		try {
-			chrome.tabs.query({ active: true, currentWindow: true }, reset);
-		} catch (e) { reportError(e); }
+		chrome.tabs.query({ active: true, currentWindow: true }, reset);
 	}
 }
 

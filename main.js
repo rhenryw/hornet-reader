@@ -1,6 +1,11 @@
 (function() {
 'use strict';
 
+if (window.__waspLineInitialized) {
+	return;
+}
+window.__waspLineInitialized = true;
+
 // Linear interpolate between v0 and v1 at percent t
 function lerp(v0, v1, t)
 {

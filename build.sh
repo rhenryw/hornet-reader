@@ -1,3 +1,5 @@
+set -euo pipefail
+
 cat libs/lineWrapDetector.js main.js > extension/contentScript.js
 
 while getopts ":i" opt; do

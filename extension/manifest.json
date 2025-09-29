@@ -2,11 +2,11 @@
 	"name": "WaspLine Reader",
 	"version": "1.2.0",
 	"description": "Read faster using color gradients",
-	"manifest_version": 2,
-	"background":{
-		"scripts":["bg.js"]
-        },
-	"browser_action": {
+	"manifest_version": 3,
+	"background": {
+		"service_worker": "bg.js"
+	},
+	"action": {
 		"default_icon": {
 			"16": "icons/wasp16.png",
 			"24": "icons/wasp24.png",
@@ -23,7 +23,20 @@
 	"permissions": [
 		"activeTab",
 		"storage",
-		"http://*/",
-		"https://*/"
+		"tabs",
+		"scripting"
+	],
+	"host_permissions": [
+		"<all_urls>"
+	],
+	"web_accessible_resources": [
+		{
+			"resources": [
+				"contentScript.js"
+			],
+			"matches": [
+				"<all_urls>"
+			]
+		}
 	]
 }
