@@ -18,4 +18,4 @@ while getopts ":i" opt; do
   esac
 done
 
-(cd extension && zip ../waspLineReader * */*)
+(cd extension && zip ../HornetReader * */*)

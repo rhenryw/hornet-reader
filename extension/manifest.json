@@ -1,24 +1,32 @@
 {
-	"name": "WaspLine Reader",
+	"name": "Hornet Reader",
 	"version": "1.2.0",
 	"description": "Read faster using color gradients",
 	"manifest_version": 3,
+	"browser_specific_settings": {
+		"gecko": {
+			"id": "hornet-reader@example.com",
+			"strict_min_version": "109.0"
+		}
+	},
 	"background": {
 		"service_worker": "bg.js"
 	},
 	"action": {
 		"default_icon": {
-			"16": "icons/wasp16.png",
-			"24": "icons/wasp24.png",
-			"32": "icons/wasp32.png"
+			"16": "icons/hornet16.png",
+			"24": "icons/hornet24.png",
+			"32": "icons/hornet32.png",
+			"48": "icons/hornet48.png",
+			"128": "icons/hornet128.png"
 		},
-		"default_title": "Apply gradients",
+		"default_title": "Hornet Reader",
 		"default_popup": "menu/index.html"
 	},
 	"icons": {
-		"16": "icons/wasp16.png",
-		"48": "icons/wasp48.png",
-		"128": "icons/wasp128.png"
+		"16": "icons/hornet16.png",
+		"48": "icons/hornet48.png",
+		"128": "icons/hornet128.png"
 	},
 	"permissions": [
 		"activeTab",
@@ -29,6 +37,12 @@
 	"host_permissions": [
 		"<all_urls>"
 	],
+	"browser_specific_settings": {
+  "gecko": {
+    "id": "hornet-reader@rhw.one",
+    "strict_min_version": "109.0"
+  }
+},
 	"web_accessible_resources": [
 		{
 			"resources": [
